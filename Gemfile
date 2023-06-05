@@ -12,6 +12,10 @@ gem "activerecord", "~> 6.1"
 # https://github.com/sinatra-activerecord/sinatra-activerecord
 gem "sinatra-activerecord"
 
+# Rack middleware. Used specifically for parsing the request body into params.
+# https://github.com/rack/rack-contrib
+gem "rack-contrib", "~> 2.3"
+
 # Run common tasks from the command line
 # https://github.com/ruby/rake
 gem "rake"

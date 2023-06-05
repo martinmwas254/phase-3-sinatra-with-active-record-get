@@ -1,58 +1,39 @@
-# Sinatra with Active Record: GET Requests
+# Sinatra with Active Record: POST/PATCH/DELETE Requests
 
 ## Learning Goals
 
-- Handle multiple `GET` requests in a controller
-- Use the params hash to look up data with Active Record
-- Send a JSON response using data from an Active Record model
-- Use the `#to_json` method to serialize JSON data
+- Handle non-`GET` requests in a controller
+- Access data in the request body with the params hash
+- Perform CRUD actions with Active Record from the controller
 
 ## Introduction
 
-OK, it's the moment of truth! Our application is all set up; we've reviewed the
-file structure and talked about how to run the server. Let's talk about how we
-can use Sinatra to access data about our models and send that data as a
-response.
+So far, we've seen how to set up an API with Sinatra to allow frontend
+applications to access data from a database in a JSON format. For many
+applications, just being able to access/read data isn't enough — what kind of
+app would Twitter be if you couldn't write posts? What would Instagram be if you
+couldn't like photos? How embarrassing would Facebook be if you couldn't go back
+and delete those regrettable high school photos?
 
-Imagine this scenario: you're given the task of creating a new game review
-website from scratch. You want a dynamic, highly interactive frontend, so
-naturally you choose React. You also need to store the data about your users,
-your games, and the reviews somewhere. Well, it sounds like we need a database
-for that. Great! We can use Active Record to set up and access data from the
-database.
+All of those applications, and most web apps, can be broadly labeled as CRUD
+applications — they allow users to Create, Read, Update, and Delete information.
 
-Here's the problem though. React can't communicate directly with the database —
-for that, you need Active Record and Ruby. Active Record also doesn't know
-anything about your React application (and nor should it!). So then how can
-we connect up our React frontend with the database?
-
-Well, it sounds like we need some sort of **interface** between React and our
-database. Perhaps some sort of **Application Programming Interface** (or as you
-may know it, API). We need a structured way for these two applications to
-communicate, using a couple things they **do** have in common: **HTTP** and
-**JSON**.
-
-_That_ is what we'll be building for the rest of this section: an API
-(specifically, a JSON API) that will allow us to use Active Record to
-communicate with a database from a React application — or really, from any
-application that speaks HTTP!
+We've seen a few ways to Read data in an API. We've also already seen how to
+Create/Update/Delete records from a database using Active Record. All that's
+left is to connect what we know from Active Record with some new techniques for
+establishing routes and accessing data in our Sinatra application.
 
 ## Setup
 
-We'll continue building our Sinatra application using the code from the previous
-lesson. Run these commands to install the dependencies and set up the database:
+We'll continue working on the game review application from the previous lessons.
+To get set up, run:
 
 ```console
 $ bundle install
 $ bundle exec rake db:migrate db:seed
 ```
 
-> **Note**: Running `rake db:migrate db:seed` on one line will run the
-> migrations first, then the seed file. It's a nice way to save a few
-> keystrokes!
-
-You can view the models in the `app/models` directory, and the migrations in the
-`db/migrate` folder. Here's what the relationships will look like in our ERD:
+As a reminder, here's what the relationships will look like in our ERD:
 
 ![Game Reviews ERD](https://curriculum-content.s3.amazonaws.com/phase-3/active-record-associations-many-to-many/games-reviews-users-erd.png)
 
@@ -62,468 +43,353 @@ Then, run the server with our new Rake task:
 $ bundle exec rake server
 ```
 
-With that set up, let's work on getting Sinatra and Active Record working
-together!
+With that set up, let's start working on some CRUD!
 
-## Accessing the Model From the Controller
+## Handling DELETE Requests
 
-Imagine we're building a feature in a React application where we'd like to show
-our users a list of all the games in the database. From React, we might have
-code similar to the following to make this request for the data:
+Let's start with the simplest action: the DELETE request. Imagine we're building
+a new feature in our frontend React application. Our users want some way to
+delete their reviews, in case they change their minds. In React, our component
+for handling this delete action might look something like this:
 
-```jsx
-function GameList() {
-  const [games, setGames] = useState([]);
-
-  useEffect(() => {
-    fetch("http://localhost:9292/games")
+```js
+function ReviewItem({ review, onDeleteReview }) {
+  function handleDeleteClick() {
+    fetch(`http://localhost:9292/reviews/${review.id}`, {
+      method: "DELETE",
+    })
       .then((r) => r.json())
-      .then((games) => setGames(games));
-  }, []);
-
-  return (
-    <section>
-      {games.map((game) => (
-        <GameItem key={game.id} game={game} />
-      ))}
-    </section>
-  );
-}
-```
-
-It's now our job to set up the server so that when a GET request is made to
-`/games`, we return an array of all the games in our database in JSON format.
-Let's set up that code in our controller:
-
-```rb
-class ApplicationController < Sinatra::Base
-
-  get '/games' do
-    # get all the games from the database
-    # return a JSON response with an array of all the game data
-  end
-
-end
-```
-
-How do we get all the games from the database? Thankfully for us, Active Record
-makes it simple:
-
-```rb
-Game.all
-# => [#<Game>, #<Game>, #<Game>]
-```
-
-We can also use Active Record's `#to_json` method to convert this list of Active
-Record objects to a JSON-formatted string. All together, in our controller,
-here's how that would look:
-
-```rb
-class ApplicationController < Sinatra::Base
-
-  get '/games' do
-    # get all the games from the database
-    games = Game.all
-    # return a JSON response with an array of all the game data
-    games.to_json
-  end
-
-end
-```
-
-Now head over to the browser, and visit the newly-created `/games` endpoint at
-[http://localhost:9292/games](http://localhost:9292/games). You should see a
-response with a JSON-formatted array of all the games from the database:
-
-```json
-[
-  {
-    "id": 1,
-    "title": "Banjo-Kazooie: Grunty's Revenge",
-    "genre": "Real-time strategy",
-    "platform": "Nintendo DSi",
-    "price": 46,
-    "created_at": "2021-07-19T21:55:24.266Z",
-    "updated_at": "2021-07-19T21:55:24.266Z"
-  },
-  {
-    "id": 2,
-    "title": "The Witcher 2: Assassins of Kings",
-    "genre": "Text adventure",
-    "platform": "Game Boy Advance",
-    "price": 49,
-    "created_at": "2021-07-19T21:55:24.298Z",
-    "updated_at": "2021-07-19T21:55:24.298Z"
-  },
-  ...
-]
-```
-
-Awesome!
-
-You also have a lot of control over how this data is returned by using Active
-Record. For example, you could sort the games by title instead of the default
-sort order:
-
-```rb
-  get '/games' do
-    games = Game.all.order(:title)
-    games.to_json
-  end
-```
-
-Or just return the first 10 games:
-
-```rb
-  get '/games' do
-    games = Game.all.order(:title).limit(10)
-    games.to_json
-  end
-```
-
-Now that you have full control over how the server handles the response, you
-have the freedom to design your API as you see fit — just think about what kind
-of data you need for your frontend application.
-
-Let's make one more small adjustment to the controller. By default, Sinatra sets
-a [response header][] with the `Content-Type: text/html`, since in general, web
-servers are used to send HTML content to browsers. Our server, however, will be
-used to send JSON data, as you've seen above. We can indicate this by changing the
-response header for all our routes by adding this to the controller:
-
-```rb
-class ApplicationController < Sinatra::Base
-
-  # Add this line to set the Content-Type header for all responses
-  set :default_content_type, 'application/json'
-
-  get '/games' do
-    games = Game.all.order(:title).limit(10)
-    games.to_json
-  end
-
-end
-```
-
-[response header]: https://developer.mozilla.org/en-US/docs/Glossary/Response_header
-
-## Getting One Game Using Params
-
-We've got our API set up to handle one feature so far: we can return a list of
-all the games in the application. Let's imagine we're building another frontend
-feature; this time, we want a component that will just display the details about
-one specific game, including its associated reviews. Here's how that component
-might look:
-
-```jsx
-function GameDetail({ gameId }) {
-  const [game, setGame] = useState(null);
-
-  useEffect(() => {
-    fetch(`http://localhost:9292/games/${gameId}`)
-      .then((r) => r.json())
-      .then((game) => setGame(game));
-  }, [gameId]);
-
-  if (!game) return <h2>Loading game data...</h2>;
+      .then((deletedReview) => onDeleteReview(deletedReview));
+  }
 
   return (
     <div>
-      <h2>{game.title}</h2>
-      <p>Genre: {game.genre}</p>
-      <h4>Reviews</h4>
-      {game.reviews.map((review) => (
-        <div>
-          <h5>{review.user.name}</h5>
-          <p>Score: {review.score}</p>
-          <p>Comment: {review.comment}</p>
-        </div>
-      ))}
+      <p>Score: {review.score}</p>
+      <p>{review.comment}</p>
+      <button onClick={handleDeleteClick}>Delete Review</button>
     </div>
   );
 }
 ```
 
-So for this feature, we know our server needs to be able to handle a GET request
-to return data about a specific game, using the game's ID to find it in the
-database. For example, a `GET /games/10` request should return the game with the
-ID of 10 from the database; and a `GET /games/29` request should return the game
-with the ID of 29.
+So, it looks like our server needs to handle a few new things:
 
-Let's start by adding a **dynamic route** to the controller to handle any of
-these requests:
+- Handle requests with the `DELETE` HTTP verb to `/reviews/:id`
+- Find the review to delete using the ID
+- Delete the review from the database
+- Send a response with the deleted review as JSON to confirm that it was deleted
+  successfully, so the frontend can show the successful deletion to the user
+
+Let's take things one step at a time. First, we'll need to handle requests by
+adding a new route in the controller. We can write out a route for a DELETE
+request just like we would for a GET request, just by changing the method:
 
 ```rb
 class ApplicationController < Sinatra::Base
   set :default_content_type, 'application/json'
 
-  get '/games' do
-    games = Game.all.order(:title).limit(10)
-    games.to_json
+  delete '/reviews/:id' do
+    # find the review using the ID
+    # delete the review
+    # send a response with the deleted review as JSON
   end
 
-  # use the :id syntax to create a dynamic route
-  get '/games/:id' do
-    # look up the game in the database using its ID
-    # send a JSON-formatted response of the game data
-  end
-
+  # ...
 end
 ```
 
-As we saw earlier, we can access data from the dynamic portion of the URL by
-using the **params hash**. For example, if we make a GET request to `/games/10`,
-the params hash would look like this:
+Next, let's use Active Record to find and delete the review, and send back the
+appropriate JSON response:
 
 ```rb
-{ "id" => "10" }
-```
-
-With that in mind, what Active Record method could we use to look up a game with
-a specific ID? Either [`.find`][] or [`.find_by`][] would do the trick. Let's
-give it a shot:
-
-```rb
-  get '/games/:id' do
-    # look up the game in the database using its ID
-    game = Game.find(params[:id])
-    # send a JSON-formatted response of the game data
-    game.to_json
-  end
-```
-
-With this code in place in the controller, try accessing the data about one game
-in the browser at
-[http://localhost:9292/games/1](http://localhost:9292/games/1). You should see
-an object like this in the response:
-
-```json
-{
-  "id": 1,
-  "title": "Banjo-Kazooie: Grunty's Revenge",
-  "genre": "Real-time strategy",
-  "platform": "Nintendo DSi",
-  "price": 46,
-  "created_at": "2021-07-19T21:55:24.266Z",
-  "updated_at": "2021-07-19T21:55:24.266Z"
-}
-```
-
-Try making requests using other game IDs as well. As long as the ID exists in
-the database, you'll get a response.
-
-### Accessing Associated Data
-
-Right now, our server is returning information about the game, but how can we
-also access data about its associated models like the users and reviews? We
-could make another endpoint for the user and review data, and make additional
-requests from the frontend, but that might get messy. It would be more efficient
-to return this data together along with the game data in just one single
-response.
-
-Let's take a look at the JSON being returned from the server. How does this Ruby
-code:
-
-```rb
-game = Game.find(params[:id])
-game.to_json
-```
-
-...turn into this JSON object?
-
-```json
-{
-  "id": 1,
-  "title": "Banjo-Kazooie: Grunty's Revenge",
-  "genre": "Real-time strategy",
-  "platform": "Nintendo DSi",
-  "price": 46,
-  "created_at": "2021-07-19T21:55:24.266Z",
-  "updated_at": "2021-07-19T21:55:24.266Z"
-}
-```
-
-When we're using the `#to_json` method, Active Record [serializes][as_json]
-(converts from one format to another) the Active Record object into a JSON
-object by getting a list of the model's attributes based on the column names
-defined in the database table associated with the model.
-
-Under the hood, the `#to_json` method calls the [`#as_json`][as_json] method to
-generate a hash before converting it to a JSON string. Looking at the
-documentation for [`#as_json`][as_json], you'll notice we can pass some
-additional options to customize how the object is serialized. To include data
-about associated models in our JSON, we can pass the `include:` option to
-`#to_json`, which will pass it along to `#as_json`:
-
-```rb
-  get '/games/:id' do
-    game = Game.find(params[:id])
-
-    # include associated reviews in the JSON response
-    game.to_json(include: :reviews)
-  end
-```
-
-This will produce the following JSON structure:
-
-```json
-{
-  "id": 1,
-  "title": "Banjo-Kazooie: Grunty's Revenge",
-  "genre": "Real-time strategy",
-  "platform": "Nintendo DSi",
-  "price": 46,
-  "created_at": "2021-07-19T21:55:24.266Z",
-  "updated_at": "2021-07-19T21:55:24.266Z",
-  "reviews": [
-    {
-      "id": 1,
-      "score": 9,
-      "comment": "Qui dolorem dolores occaecati.",
-      "game_id": 1,
-      "created_at": "2021-07-19T21:55:24.292Z",
-      "updated_at": "2021-07-19T21:55:24.292Z",
-      "user_id": 2
-    },
-    {
-      "id": 2,
-      "score": 3,
-      "comment": "Omnis tempora sequi ut.",
-      "game_id": 1,
-      "created_at": "2021-07-19T21:55:24.295Z",
-      "updated_at": "2021-07-19T21:55:24.295Z",
-      "user_id": 5
-    }
-  ]
-}
-```
-
-Note that this only works because our `Game` model has the correct associations
-set up:
-
-```rb
-class Game < ActiveRecord::Base
-  has_many :reviews
-  has_many :users, through: :reviews
+delete '/reviews/:id' do
+  # find the review using the ID
+  review = Review.find(params[:id])
+  # delete the review
+  review.destroy
+  # send a response with the deleted review as JSON
+  review.to_json
 end
 ```
 
-We can even take it a level further, and include the users associated with each
-review:
+Great! Now, in order to test out this route, we won't be able to use the
+browser, since we can only make GET requests from the browser's URL bar.
+Let's use Postman instead. Try it out:
 
-```rb
-  get '/games/:id' do
-    game = Game.find(params[:id])
+![Postman Delete Request](https://curriculum-content.s3.amazonaws.com/phase-3/sinatra-with-active-record-post-patch-delete/postman-delete.png)
 
-    # include associated reviews in the JSON response
-    game.to_json(include: { reviews: { include: :user } })
-  end
+This is essentially doing the same thing as this `fetch` call:
+
+```js
+fetch(`http://localhost:9292/reviews/1`, {
+  method: "DELETE",
+});
 ```
 
-```json
-{
-  "id": 1,
-  "title": "Banjo-Kazooie: Grunty's Revenge",
-  "genre": "Real-time strategy",
-  "platform": "Nintendo DSi",
-  "price": 46,
-  "created_at": "2021-07-19T21:55:24.266Z",
-  "updated_at": "2021-07-19T21:55:24.266Z",
-  "reviews": [
-    {
-      "id": 1,
-      "score": 9,
-      "comment": "Qui dolorem dolores occaecati.",
-      "game_id": 1,
-      "created_at": "2021-07-19T21:55:24.292Z",
-      "updated_at": "2021-07-19T21:55:24.292Z",
-      "user_id": 2,
-      "user": {
-        "id": 2,
-        "name": "Miss Landon Boehm",
-        "created_at": "2021-07-19T21:55:24.247Z",
-        "updated_at": "2021-07-19T21:55:24.247Z"
-      }
-    },
-    {
-      "id": 2,
-      "score": 3,
-      "comment": "Omnis tempora sequi ut.",
-      "game_id": 1,
-      "created_at": "2021-07-19T21:55:24.295Z",
-      "updated_at": "2021-07-19T21:55:24.295Z",
-      "user_id": 5,
-      "user": {
-        "id": 5,
-        "name": "The Hon. Del Ruecker",
-        "created_at": "2021-07-19T21:55:24.252Z",
-        "updated_at": "2021-07-19T21:55:24.252Z"
-      }
-    }
-  ]
-}
+You should get a response with the deleted review as JSON, and if you check the
+server logs, you should also see that Active Record ran the SQL code to delete
+the record from the database:
+
+```sql
+DELETE FROM "reviews" WHERE "reviews"."id" = 1
 ```
 
-We can also be more selective about which attributes are returned from each
-model with the `only` option:
+**NOTE:** You can seed the database again by running `rake db:seed` if you
+wish to play around with the initial data.
 
-```rb
-  get '/games/:id' do
-    game = Game.find(params[:id])
+## Handling POST Requests
 
-    # include associated reviews in the JSON response
-    game.to_json(only: [:id, :title, :genre, :price], include: {
-      reviews: { only: [:comment, :score], include: {
-        user: { only: [:name] }
-      } }
+For our next feature, let's give our users the ability to **Create** new reviews.
+From the frontend, here's how our React component might look:
+
+```js
+function ReviewForm({ userId, gameId, onAddReview }) {
+  const [comment, setComment] = useState("");
+  const [score, setScore] = useState("0");
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    fetch("http://localhost:9292/reviews", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        comment: comment,
+        score: score,
+        user_id: userId,
+        game_id: gameId,
+      }),
     })
-  end
-```
+      .then((r) => r.json())
+      .then((newReview) => onAddReview(newReview));
+  }
 
-```json
-{
-  "id": 1,
-  "title": "Banjo-Kazooie: Grunty's Revenge",
-  "genre": "Real-time strategy",
-  "price": 46,
-  "reviews": [
-    {
-      "score": 9,
-      "comment": "Qui dolorem dolores occaecati.",
-      "user": {
-        "name": "Miss Landon Boehm"
-      }
-    },
-    {
-      "score": 3,
-      "comment": "Omnis tempora sequi ut.",
-      "user": {
-        "name": "The Hon. Del Ruecker"
-      }
-    }
-  ]
+  return <form onSubmit={handleSubmit}>{/* controlled form code here*/}</form>;
 }
 ```
 
-Needless to say, the `#to_json` method has a lot of capabilities! It's very
-handy when you need to structure your JSON response in a specific format based
-on what data is needed on the frontend.
+This request is a bit trickier than the last: in order to create a review in the
+database, we need some way of getting all the data that the user entered into
+the form. From the code above, you can see that we'll have access to that data
+in the **body** of the request, as a JSON-formatted string. So in terms of the
+steps for our server, we need to:
+
+- Handle requests with the `POST` HTTP verb to `/reviews`
+- Access the data in the body of the request
+- Use that data to create a new review in the database
+- Send a response with newly created review as JSON
+
+Let's start with the easy part. We can create a new route like so:
+
+```rb
+post '/reviews' do
+
+end
+```
+
+In this route, we'll need some way of getting access to the data in the body of
+the request. Sinatra gives us access to the raw data in the request body by
+calling `request.body.read`, which will return a string. We could then convert
+this data from a JSON string to a Ruby hash by using
+`JSON.parse(request.body.read)`. Luckily though, there's an even easier way!
+
+This application is set up to use some additional
+[Rack middleware][rack-contrib] in the `config.ru` file:
+
+```rb
+require_relative './config/environment'
+
+# Parse JSON from the request body into the params hash
+use Rack::JSONBodyParser
+
+run ApplicationController
+```
+
+"Middleware" is a category of code that runs on every single request-response
+cycle, and does some work to transform the request and make it easier to work
+with once it reaches the controller. In this case, the `Rack::JSONBodyParser`
+middleware does the work of reading the body of the request, parsing it from a
+JSON string into a Ruby hash, and adding it to the `params` hash.
+
+Let's see what that looks like in action. Add a breakpoint to your new route,
+and require Pry at the top of the file:
+
+```rb
+require 'pry'
+
+class ApplicationController < Sinatra::Base
+  set :default_content_type, 'application/json'
+
+  post '/reviews' do
+    binding.pry
+  end
+
+  # ... rest of routes here
+end
+```
+
+Then, use Postman to send a request like this:
+
+![Postman POST request](https://curriculum-content.s3.amazonaws.com/phase-3/sinatra-with-active-record-post-patch-delete/postman-post.png)
+
+Make sure to match these settings exactly:
+
+- Set the HTTP verb to POST
+- Set the URL to `http://localhost:9292/reviews`
+- In the request **body** tab, select the "Raw" and "JSON" options from the two
+  dropdown menus
+- Then paste in this JSON data in the request body area:
+
+```json
+{
+  "score": 10,
+  "comment": "Great game.",
+  "game_id": 1,
+  "user_id": 1
+}
+```
+
+Then, click Send to make the request. You should enter the Pry breakpoint from
+your POST route, where you can interact with the request and inspect the params
+hash:
+
+```rb
+params
+# => {"score"=>10, "comment"=>"Great game.", "game_id"=>1, "user_id"=>1}
+params[:score]
+# => 10
+params[:user_id]
+# => 1
+```
+
+Great! As you can see, we now have access to the data from the body of the
+request that we need in order to create a new `Review` instance. Exit the Pry
+session with `exit`.
+
+If we were using `fetch` instead of Postman to make this request, the params
+hash would be whatever data was sent in the body of the fetch request:
+
+```js
+fetch("http://localhost:9292/reviews", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    score: 10,
+    comment: "Great game.",
+    game_id: 1,
+    user_id: 1,
+  }),
+});
+```
+
+Now that we have access to that data, all that's left is to use the data with
+Active Record to create a new `Review` and send a JSON response back. All
+together, here's how this route should look:
+
+```rb
+post '/reviews' do
+  review = Review.create(
+    score: params[:score],
+    comment: params[:comment],
+    game_id: params[:game_id],
+    user_id: params[:user_id]
+  )
+  review.to_json
+end
+```
+
+Try running the request through Postman again. Your new review should be added
+to the database and you should get back a JSON response with the review data.
+Nice!
+
+## Handling PATCH Requests
+
+Onto the last HTTP verb: `PATCH`! Now that you've learned about `POST` and
+`DELETE` requests, this should be more straightforward. From the frontend, we
+might need to use a `PATCH` request to handle a feature that would allow a user
+to update their review, in case they change their minds:
+
+```js
+function EditReviewForm({ review, onUpdateReview }) {
+  const [comment, setComment] = useState("");
+  const [score, setScore] = useState("0");
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    fetch(`http://localhost:9292/reviews/${review.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        comment: comment,
+        score: score,
+      }),
+    })
+      .then((r) => r.json())
+      .then((updatedReview) => onUpdateReview(updatedReview));
+  }
+
+  return <form onSubmit={handleSubmit}>{/* controlled form code here*/}</form>;
+}
+```
+
+The steps we'll need to handle on the server for this request are basically a
+combination of DELETE and POST. We'll need to:
+
+- Handle requests with the `PATCH` HTTP verb to `/reviews/:id`
+- Find the review to update using the ID
+- Access the data in the body of the request
+- Use that data to update the review in the database
+- Send a response with updated review as JSON
+
+Give it a shot yourself before looking at the solution! You have all the tools
+you need to get this request working. When you're ready, keep scrolling...
+
+...
+
+...
+
+...
+
+...
+
+...
+
+...
+
+Ok, here's how the code for this route would look:
+
+```rb
+patch '/reviews/:id' do
+  review = Review.find(params[:id])
+  review.update(
+    score: params[:score],
+    comment: params[:comment]
+  )
+  review.to_json
+end
+```
+
+And here's how you could test it out in Postman:
+
+![Postman PATCH request](https://curriculum-content.s3.amazonaws.com/phase-3/sinatra-with-active-record-post-patch-delete/postman-patch.png)
+
+Notice we're only updating the score and comment: it would be strange to change
+which user left a review, or which game a review was left for.
 
 ## Conclusion
 
-In this lesson, you created your very first web API! You learned how to set up
-multiple routes to handle different requests based on what kind of data we
-needed for a frontend application, and used Active Record to serialize the JSON
-response to include all the data needed. At their most basic levels, almost all
-web APIs provide a way for clients, like React applications, to interact with a
-database and gain access to data in a structured way. Thanks to tools like
-Sinatra and Active Record, setting up this interface is fairly straightforward.
+You're at the point now where you can create a JSON API that handles all four
+CRUD actions: Create, Read, Update, and Delete. With just these four actions,
+you can build just about any application you can think of!
 
 ## Resources
 
-- [Sinatra Routes](https://rubydoc.info/gems/sinatra#routes)
-- [Active Model `#as_json` method][as_json]
+- [HTTP Verbs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods)
+- [Download Postman](https://www.postman.com/downloads/)
 
-[as_json]: https://api.rubyonrails.org/classes/ActiveModel/Serializers/JSON.html#method-i-as_json
-[`.find`]: https://api.rubyonrails.org/v6.1.4/classes/ActiveRecord/FinderMethods.html#method-i-find
-[`.find_by`]: https://api.rubyonrails.org/v6.1.4/classes/ActiveRecord/FinderMethods.html#method-i-find_by
+[rack-contrib]: https://github.com/rack/rack-contrib
